@@ -1,0 +1,1772 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>雲端記帳本</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- SheetJS (xlsx.js) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <style>
+        /* Custom Styles for a better look and feel */
+        body {
+            font-family: 'Inter', 'Noto Sans TC', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        .sidebar {
+            transition: width 0.3s ease;
+        }
+        .sidebar-item-text {
+            transition: opacity 0.3s ease;
+        }
+        .floating-action-button {
+            transition: transform 0.2s ease-in-out;
+        }
+        .floating-action-button:hover {
+            transform: scale(1.1);
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        .page {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-900">
+
+    <div id="app-loading" class="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center">
+        <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-gray-500"></div>
+        <p class="mt-4 text-lg text-slate-600">正在連接雲端...</p>
+    </div>
+
+    <!-- Login View (for GitHub Pages / External Hosting) -->
+    <div id="login-view" class="fixed inset-0 bg-gray-100 z-40 flex flex-col items-center justify-center p-8 text-center hidden">
+        <i class="fas fa-wallet text-6xl text-gray-400 mb-6"></i>
+        <h1 class="text-4xl font-bold text-gray-800 mb-4">歡迎使用雲端記帳本</h1>
+        <p class="text-lg text-slate-600 mb-8 max-w-md">請登入以開始同步您的財務紀錄。此應用程式使用 Firebase 進行安全的雲端儲存。</p>
+        <button id="login-btn" class="bg-green-600 text-white font-bold py-3 px-8 rounded-lg text-lg hover:bg-green-700 transition-colors flex items-center gap-3">
+            <i class="fab fa-google"></i>
+            <span>使用 Google 登入</span>
+        </button>
+    </div>
+
+    <!-- Main App View -->
+    <div id="main-app" class="flex h-screen bg-gray-100 hidden">
+        <!-- Sidebar -->
+        <nav id="sidebar" class="sidebar bg-gray-50 border-r border-gray-200 w-64 flex flex-col z-20">
+            <div class="p-4 border-b border-gray-200 flex items-center justify-between">
+                <h1 id="sidebar-title" class="text-2xl font-bold text-gray-800">雲端記帳本</h1>
+                <button id="toggle-sidebar-btn" class="text-slate-500 hover:text-gray-800 md:hidden">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <ul class="flex-1 p-2 space-y-1">
+                <li class="nav-item" data-page="transactions"><a href="#" class="flex items-center p-3 rounded-lg text-slate-700 hover:bg-gray-200"><i class="fas fa-list-ul w-8 text-center"></i><span class="sidebar-item-text font-semibold">記帳</span></a></li>
+                <li class="nav-item" data-page="overview"><a href="#" class="flex items-center p-3 rounded-lg text-slate-700 hover:bg-gray-200"><i class="fas fa-chart-line w-8 text-center"></i><span class="sidebar-item-text font-semibold">總覽</span></a></li>
+                <li class="nav-item" data-page="budget"><a href="#" id="nav-budget-link" class="flex items-center p-3 rounded-lg text-slate-700 hover:bg-gray-200"><i class="fas fa-bullseye w-8 text-center"></i><span class="sidebar-item-text font-semibold">預算</span></a></li>
+                <li class="nav-item" data-page="recurring"><a href="#" class="flex items-center p-3 rounded-lg text-slate-700 hover:bg-gray-200"><i class="fas fa-redo w-8 text-center"></i><span class="sidebar-item-text font-semibold">定期</span></a></li>
+                <li class="nav-item" data-page="goals"><a href="#" class="flex items-center p-3 rounded-lg text-slate-700 hover:bg-gray-200"><i class="fas fa-flag-checkered w-8 text-center"></i><span class="sidebar-item-text font-semibold">目標</span></a></li>
+                <li class="nav-item" data-page="categories"><a href="#" class="flex items-center p-3 rounded-lg text-slate-700 hover:bg-gray-200"><i class="fas fa-tags w-8 text-center"></i><span class="sidebar-item-text font-semibold">類別管理</span></a></li>
+                <li class="nav-item" data-page="data-management"><a href="#" class="flex items-center p-3 rounded-lg text-slate-700 hover:bg-gray-200"><i class="fas fa-database w-8 text-center"></i><span class="sidebar-item-text font-semibold">資料管理</span></a></li>
+            </ul>
+            <div class="p-4 border-t border-gray-200">
+                <button id="collapse-sidebar-btn" class="w-full text-slate-500 hover:text-gray-800 flex items-center justify-center p-2 rounded-lg">
+                    <i id="collapse-icon" class="fas fa-chevron-left"></i>
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col h-screen">
+            <header class="bg-gray-50/80 backdrop-blur-sm p-4 border-b border-gray-200 md:hidden flex justify-between items-center">
+                <h1 class="text-xl font-bold text-gray-800">雲端記帳本</h1>
+                <button id="mobile-menu-btn" class="text-slate-600 text-xl">
+                    <i class="fas fa-bars"></i>
+                </button>
+            </header>
+            
+            <div id="content-area" class="flex-1 overflow-y-auto p-4 md:p-8">
+                <!-- Page: Transactions -->
+                <div id="page-transactions" class="page">
+                    <!-- Balance Cards -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div class="bg-white p-6 rounded-lg border border-gray-200 flex items-center space-x-4">
+                            <div class="bg-green-100 p-4 rounded-full"><i class="fas fa-arrow-up text-2xl text-green-500"></i></div>
+                            <div>
+                                <p class="text-slate-500">總收入</p>
+                                <p id="total-income" class="text-2xl font-bold">$0</p>
+                            </div>
+                        </div>
+                        <div class="bg-white p-6 rounded-lg border border-gray-200 flex items-center space-x-4">
+                            <div class="bg-red-100 p-4 rounded-full"><i class="fas fa-arrow-down text-2xl text-red-500"></i></div>
+                            <div>
+                                <p class="text-slate-500">總支出</p>
+                                <p id="total-expense" class="text-2xl font-bold">$0</p>
+                            </div>
+                        </div>
+                        <div class="bg-white p-6 rounded-lg border border-gray-200 flex items-center space-x-4">
+                            <div class="bg-gray-100 p-4 rounded-full"><i class="fas fa-wallet text-2xl text-gray-700"></i></div>
+                            <div>
+                                <p class="text-slate-500">可用餘額</p>
+                                <p id="available-balance" class="text-2xl font-bold">$0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Initial Capital -->
+                    <div class="bg-white p-6 rounded-lg border border-gray-200 mb-8">
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-xl font-bold">初始資金 (第一桶金)</h2>
+                            <button id="edit-capital-btn" class="text-blue-600 hover:text-blue-800 font-semibold">編輯</button>
+                        </div>
+                        <p class="text-slate-500 text-sm mb-4">這是在您開始記帳前已有的資金，它會被計入可用餘額，但不會被算作總收入。</p>
+                        <div id="capital-display-view">
+                            <p class="text-3xl font-bold text-slate-800" id="capital-display-amount">$0</p>
+                        </div>
+                        <div id="capital-edit-view" class="hidden mt-4">
+                            <div class="flex items-center gap-2">
+                                <input id="capital-input" type="number" placeholder="輸入初始資金金額" class="flex-grow p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                                <button id="save-capital-btn" class="bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700 transition-colors">儲存</button>
+                                <button id="cancel-capital-edit-btn" class="bg-gray-200 text-slate-800 font-bold py-3 px-6 rounded-lg hover:bg-gray-300 transition-colors">取消</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <!-- Deposits -->
+                        <div class="bg-white p-6 rounded-lg border border-gray-200">
+                            <h2 class="text-xl font-bold mb-4">存款管理</h2>
+                            <div class="flex items-center gap-2 mb-4">
+                                <input id="deposit-amount" type="number" placeholder="輸入存款金額" class="flex-grow p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                                <button id="add-deposit-btn" class="bg-green-600 text-white p-3 rounded-lg hover:bg-green-700 transition-colors"><i class="fas fa-piggy-bank text-xl"></i></button>
+                            </div>
+                            <div id="deposit-list" class="space-y-2 max-h-60 overflow-y-auto">
+                                <!-- Deposit items will be injected here -->
+                            </div>
+                        </div>
+
+                        <!-- Recent Transactions -->
+                        <div class="bg-white p-6 rounded-lg border border-gray-200">
+                            <h2 class="text-xl font-bold mb-4">所有交易紀錄</h2>
+                            <div id="recent-transactions-list" class="space-y-3 max-h-[400px] overflow-y-auto">
+                                <!-- Transaction items will be injected here -->
+                                <p class="text-slate-400 text-center py-4">尚無交易紀錄</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Other pages will be hidden by default -->
+                <div id="page-overview" class="page hidden w-full h-full">
+                    <div class="bg-white p-6 rounded-lg border border-gray-200">
+                        <div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
+                            <h2 class="text-2xl font-bold">數據總覽</h2>
+                            <div class="flex items-center gap-2">
+                                <select id="overview-filter" class="p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                                    <option value="month">本月</option>
+                                    <option value="year">本年</option>
+                                    <option value="all">所有時間</option>
+                                </select>
+                                <div class="bg-gray-200 p-1 rounded-lg flex">
+                                    <button id="show-balance-chart-btn" class="px-3 py-1 rounded-md bg-green-600 text-white"><i class="fas fa-chart-line"></i></button>
+                                    <button id="show-expense-chart-btn" class="px-3 py-1 rounded-md text-slate-600"><i class="fas fa-chart-pie"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="w-full h-[60vh] flex items-center justify-center">
+                            <canvas id="overview-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="page-budget" class="page hidden w-full h-full">
+                     <div class="bg-white p-8 rounded-lg border border-gray-200 h-full flex flex-col md:flex-row items-center justify-center gap-8">
+                        <div class="relative w-64 h-64 md:w-80 md:h-80">
+                            <canvas id="budget-chart"></canvas>
+                            <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                                <p class="text-slate-500 text-lg">本月支出</p>
+                                <p id="budget-spent-percentage" class="text-4xl font-bold">0%</p>
+                            </div>
+                        </div>
+                        <div class="text-center md:text-left">
+                            <p class="text-slate-500 text-xl">預算進度</p>
+                            <p class="text-3xl font-bold mb-6"><span id="budget-spent-amount">$0</span> / <span id="budget-total-amount">$0</span></p>
+                            <div class="flex items-center gap-2">
+                                <input id="budget-input" type="number" placeholder="設定每月總預算" class="p-3 border rounded-lg w-48 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                                <button id="save-budget-btn" class="bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700 transition-colors">儲存</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="page-recurring" class="page hidden">
+                    <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+                        <div class="lg:col-span-2 bg-white p-6 rounded-lg border border-gray-200">
+                            <h2 class="text-xl font-bold mb-4">新增定期項目</h2>
+                            <form id="add-recurring-form" class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-600">類型</label>
+                                    <select id="recurring-type" required class="mt-1 block w-full p-2 border rounded-md">
+                                        <option value="expense">支出</option>
+                                        <option value="income">收入</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-600">每月日期 (1-28)</label>
+                                    <input id="recurring-day" type="number" min="1" max="28" required class="mt-1 block w-full p-2 border rounded-md">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-600">類別</label>
+                                    <select id="recurring-category" required class="mt-1 block w-full p-2 border rounded-md"></select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-600">金額</label>
+                                    <input id="recurring-amount" type="number" required class="mt-1 block w-full p-2 border rounded-md">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-600">描述</label>
+                                    <input id="recurring-description" type="text" required class="mt-1 block w-full p-2 border rounded-md">
+                                </div>
+                                <button type="submit" class="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition-colors">新增項目</button>
+                            </form>
+                        </div>
+                        <div class="lg:col-span-3 bg-white p-6 rounded-lg border border-gray-200">
+                            <h2 class="text-xl font-bold mb-4">定期項目列表</h2>
+                            <div id="recurring-list" class="space-y-3">
+                                <p class="text-slate-400 text-center py-4">尚無定期項目</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="page-goals" class="page hidden w-full h-full">
+                     <div id="goal-dashboard" class="bg-white p-8 rounded-lg border border-gray-200 h-full flex flex-col items-center justify-center gap-8 hidden">
+                        <div class="relative w-64 h-64 md:w-80 md:h-80">
+                           <canvas id="goal-chart"></canvas>
+                            <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                                <p id="goal-name-display" class="text-xl font-bold text-slate-700">目標</p>
+                                <p id="goal-progress-percentage" class="text-4xl font-bold mt-2">0%</p>
+                            </div>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-slate-500 text-xl">存款進度</p>
+                            <p class="text-3xl font-bold mb-6"><span id="goal-current-amount">$0</span> / <span id="goal-target-amount">$0</span></p>
+                            <button id="edit-goal-btn" class="bg-gray-200 text-slate-800 font-bold py-3 px-6 rounded-lg hover:bg-gray-300 transition-colors">編輯目標</button>
+                        </div>
+                    </div>
+                    <div id="setup-goal-view" class="bg-white p-8 rounded-lg border border-gray-200 h-full flex flex-col items-center justify-center gap-4 text-center">
+                        <i class="fas fa-flag-checkered text-6xl text-slate-300 mb-4"></i>
+                        <h2 class="text-2xl font-bold">設定您的第一個存款目標</h2>
+                        <p class="text-slate-500">為您的夢想設定一個目標，開始儲蓄吧！</p>
+                        <button id="setup-goal-btn" class="mt-4 bg-green-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-green-700 transition-colors">立即設定</button>
+                    </div>
+                </div>
+
+                <div id="page-categories" class="page hidden">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div class="bg-white p-6 rounded-lg border border-gray-200">
+                            <h2 class="text-xl font-bold mb-4">我的類別</h2>
+                            <div class="flex items-center gap-2 mb-4">
+                                <input id="category-name-input" type="text" placeholder="新增類別名稱" class="flex-grow p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                                <button id="add-category-btn" class="bg-green-600 text-white font-bold p-3 rounded-lg hover:bg-green-700 transition-colors">新增</button>
+                            </div>
+                            <div id="my-categories-list" class="flex flex-wrap gap-2">
+                                <p class="text-slate-400 w-full text-center py-4">尚無自訂類別</p>
+                            </div>
+                        </div>
+                        <div class="bg-white p-6 rounded-lg border border-gray-200">
+                            <h2 class="text-xl font-bold mb-4">AI 智慧新增</h2>
+                            <p class="text-slate-500 mb-4">輸入您的身分或需求 (例如: 大學生、健身愛好者)，讓 AI 為您推薦合適的類別。</p>
+                            <div class="flex items-center gap-2 mb-4">
+                                <input id="ai-prompt-input" type="text" placeholder="例如：自由工作者" class="flex-grow p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                                <button id="ai-generate-btn" class="bg-purple-500 text-white p-3 rounded-lg hover:bg-purple-600 transition-colors"><i class="fas fa-magic text-xl"></i></button>
+                            </div>
+                            <div id="ai-suggestions-container" class="flex flex-wrap gap-2">
+                                <!-- AI suggestions will be injected here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="page-data-management" class="page hidden">
+                    <div class="max-w-4xl mx-auto space-y-8">
+                        <!-- Standard Import Card -->
+                        <div class="bg-white rounded-lg border border-gray-200 p-6">
+                            <h2 class="text-xl font-bold">資料匯入 (標準格式)</h2>
+                            <p class="text-slate-500 mt-1 mb-4">請上傳 .xlsx 或 .csv 檔案來批次匯入您的交易紀錄。系統會自動新增檔案中不存在的類別。</p>
+                            
+                             <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                <h3 class="font-semibold text-slate-700 mb-2">匯入格式說明：</h3>
+                                <p class="text-sm text-slate-600 mb-3">您的 Excel (.xlsx) 或 .csv 檔案內容需要符合以下格式。第一行必須是標題，下面每一行代表一筆紀錄。</p>
+                                <div class="text-sm text-slate-600 space-y-2 mb-4">
+                                    <p><b>必要欄位：</b></p>
+                                    <ul class="list-disc list-inside ml-4">
+                                        <li><b>date</b>: 紀錄的日期。格式必須是 <code class="bg-gray-200 px-1 rounded">年-月-日</code> (例如: <code class="bg-gray-200 px-1 rounded">2025-10-11</code>)。</li>
+                                        <li><b>type</b>: 紀錄的類型。只能填 <code class="bg-gray-200 px-1 rounded">income</code> (代表收入) 或 <code class="bg-gray-200 px-1 rounded">expense</code> (代表支出)。</li>
+                                        <li><b>category</b>: 紀錄的分類。例如 <code class="bg-gray-200 px-1 rounded">餐飲</code>、<code class="bg-gray-200 px-1 rounded">交通</code> 或 <code class="bg-gray-200 px-1 rounded">薪水</code>。</li>
+                                        <li><b>amount</b>: 金額。請直接填寫數字，不要包含錢幣符號 (例如: <code class="bg-gray-200 px-1 rounded">150</code>)。</li>
+                                    </ul>
+                                    <p><b>可選欄位：</b></p>
+                                    <ul class="list-disc list-inside ml-4">
+                                        <li><b>description</b>: 備註。用來補充說明這筆紀錄的細節 (例如: <code class="bg-gray-200 px-1 rounded">與同事聚餐</code>)。</li>
+                                    </ul>
+                                </div>
+                                <h4 class="font-semibold text-slate-700 mb-2 text-sm">格式範例：</h4>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-left text-sm">
+                                        <thead class="bg-gray-200">
+                                            <tr>
+                                                <th class="p-2 font-medium">date</th>
+                                                <th class="p-2 font-medium">type</th>
+                                                <th class="p-2 font-medium">category</th>
+                                                <th class="p-2 font-medium">amount</th>
+                                                <th class="p-2 font-medium">description</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr class="border-b">
+                                                <td class="p-2">2025-10-10</td>
+                                                <td class="p-2">expense</td>
+                                                <td class="p-2">餐飲</td>
+                                                <td class="p-2">250</td>
+                                                <td class="p-2">午餐便當</td>
+                                            </tr>
+                                            <tr class="border-b">
+                                                <td class="p-2">2025-10-11</td>
+                                                <td class="p-2">income</td>
+                                                <td class="p-2">薪水</td>
+                                                <td class="p-2">50000</td>
+                                                <td class="p-2">十月份薪資</td>
+                                            </tr>
+                                            <tr class="border-b">
+                                                <td class="p-2">2025-10-11</td>
+                                                <td class="p-2">expense</td>
+                                                <td class="p-2">交通</td>
+                                                <td class="p-2">30</td>
+                                                <td class="p-2">捷運</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div class="mt-4">
+                                <input type="file" id="standard-import-input" class="hidden" accept=".xlsx, .csv">
+                                <label for="standard-import-input" class="w-full cursor-pointer bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg p-8 flex flex-col items-center justify-center text-center hover:bg-gray-200 hover:border-gray-400">
+                                    <i class="fas fa-file-upload text-4xl text-slate-400 mb-4"></i>
+                                    <span class="text-slate-600 font-semibold">點擊此處選擇檔案</span>
+                                    <span id="standard-import-filename" class="text-sm text-slate-500 mt-2">尚未選擇檔案</span>
+                                </label>
+                                <button id="standard-import-btn" class="mt-4 w-full bg-indigo-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-indigo-600 transition-colors flex items-center justify-center gap-2" disabled>
+                                    <i class="fas fa-file-import"></i>
+                                    <span>開始匯入</span>
+                                </button>
+                            </div>
+                        </div>
+                
+                        <!-- Data Export Card -->
+                        <div class="bg-white p-6 rounded-lg border border-gray-200">
+                            <h2 class="text-xl font-bold mb-2">資料匯出</h2>
+                            <p class="text-slate-500 mb-4">將您所有的交易紀錄匯出為 Excel (.xlsx) 檔案作為備份。</p>
+                            <button id="export-excel-btn" class="w-full bg-green-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-green-600 transition-colors flex items-center justify-center gap-2">
+                                <i class="fas fa-file-excel"></i>
+                                <span>匯出 Excel</span>
+                            </button>
+                        </div>
+                        
+                        <!-- Reset Data Card -->
+                        <div class="bg-white p-6 rounded-lg border-2 border-red-200">
+                             <h2 class="text-xl font-bold text-red-600 mb-2">重置資料</h2>
+                            <p class="text-slate-500 mb-4">這是一個無法復原的危險操作。點擊按鈕將會刪除您在此應用程式中的所有雲端資料。</p>
+                            <button id="reset-data-btn" class="w-full bg-red-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center gap-2">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <span>重置所有資料</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Floating Action Button for adding transaction -->
+    <button id="add-transaction-fab" class="floating-action-button fixed bottom-8 right-8 bg-green-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center text-3xl hover:bg-green-700">
+        <i class="fas fa-plus"></i>
+    </button>
+
+    <!-- Modal for adding/editing transaction -->
+    <div id="add-transaction-modal" class="fixed inset-0 bg-black bg-opacity-50 z-30 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 relative">
+            <button id="close-modal-btn" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
+            <h2 id="transaction-modal-title" class="text-2xl font-bold mb-4">新增紀錄</h2>
+            <form id="transaction-form" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <button type="button" id="type-expense-btn" class="p-3 rounded-lg bg-red-500 text-white font-semibold">支出</button>
+                    <button type="button" id="type-income-btn" class="p-3 rounded-lg bg-gray-200 text-slate-800 font-semibold">收入</button>
+                </div>
+                <input type="hidden" id="transaction-type" value="expense">
+                
+                <div>
+                    <label class="block text-sm font-medium text-slate-600">日期</label>
+                    <input type="date" id="transaction-date" required class="mt-1 block w-full p-2 border rounded-md">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-600">類別</label>
+                    <select id="transaction-category" required class="mt-1 block w-full p-2 border rounded-md">
+                        <!-- Categories will be populated here -->
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-600">金額</label>
+                    <input type="number" id="transaction-amount" required placeholder="0" class="mt-1 block w-full p-2 border rounded-md">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-600">描述 (選填)</label>
+                    <input type="text" id="transaction-description" placeholder="晚餐" class="mt-1 block w-full p-2 border rounded-md">
+                </div>
+                <button type="submit" id="transaction-submit-btn" class="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition-colors">新增</button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Generic Modal for alerts -->
+    <div id="alert-modal" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 text-center">
+            <h3 id="alert-modal-title" class="text-xl font-bold mb-2">提示</h3>
+            <p id="alert-modal-body" class="text-slate-600 mb-6"></p>
+            <div id="alert-modal-buttons" class="flex justify-center gap-4">
+                <!-- Buttons will be injected here -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- Goal Setup/Edit Modal -->
+    <div id="goal-modal" class="fixed inset-0 bg-black bg-opacity-50 z-30 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 relative">
+            <button id="close-goal-modal-btn" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
+            <h2 id="goal-modal-title" class="text-2xl font-bold mb-4">設定目標</h2>
+            <form id="goal-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-600">目標名稱</label>
+                    <input type="text" id="goal-name-input" required placeholder="例如：日本旅遊基金" class="mt-1 block w-full p-2 border rounded-md">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-600">目標金額</label>
+                    <input type="number" id="goal-target-input" required placeholder="50000" class="mt-1 block w-full p-2 border rounded-md">
+                </div>
+                <button type="submit" class="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition-colors">儲存目標</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Firebase -->
+    <script type="module">
+        // --- Firebase SDK Imports ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithRedirect, signInWithCustomToken, getRedirectResult } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            collection, 
+            onSnapshot, 
+            addDoc, 
+            deleteDoc, 
+            doc,
+            setDoc,
+            query,
+            orderBy,
+            getDocs
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- App State ---
+        const appState = {
+            userId: null,
+            transactions: [],
+            categories: [],
+            deposits: [],
+            recurringItems: [],
+            budget: { totalAmount: 0 },
+            goal: null,
+            metadata: { lastChecked: '' },
+            initialCapital: { amount: 0 },
+            editingTransactionId: null,
+            activePage: 'transactions',
+        };
+
+        // --- Firebase Services ---
+        const firebaseServices = {
+            db: null,
+            auth: null,
+        };
+
+        // --- Chart Instances ---
+        const charts = {
+            overview: null,
+            budget: null,
+            goal: null,
+        };
+        
+        // --- DOM Elements ---
+        let domElements; // Will be initialized on DOMContentLoaded
+
+        // --- Firebase Config & Initialization ---
+        
+        // !!重要!! 部署到 GITHUB PAGES 前，請在此處貼上您自己的 FIREBASE CONFIG
+        const userFirebaseConfig = {
+            // apiKey: "YOUR_API_KEY",
+            // authDomain: "YOUR_AUTH_DOMAIN",
+            // projectId: "YOUR_PROJECT_ID",
+            // storageBucket: "YOUR_STORAGE_BUCKET",
+            // messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            // appId: "YOUR_APP_ID"
+        };
+
+        const firebaseConfig = typeof __firebase_config !== 'undefined' 
+            ? JSON.parse(__firebase_config) 
+            : userFirebaseConfig; 
+            
+        const appId = typeof __app_id !== 'undefined' ? __app_id : (userFirebaseConfig.projectId || 'default-app-id');
+
+        async function initFirebase() {
+            // 檢查是否已填入 Config
+             if (!firebaseConfig.apiKey && typeof __firebase_config === 'undefined') {
+                domElements.loadingScreen.innerHTML = `
+                    <i class="fas fa-exclamation-triangle text-red-500 text-4xl mb-4"></i>
+                    <h2 class="text-xl font-bold mb-2">設定錯誤</h2>
+                    <p class="text-slate-600">您尚未在 index.html 中填入您的 Firebase 設定。</p>
+                `;
+                return;
+            }
+
+            const app = initializeApp(firebaseConfig);
+            firebaseServices.db = getFirestore(app);
+            firebaseServices.auth = getAuth(app);
+
+            // 處理 Google 登入重新導向
+            try {
+                await getRedirectResult(firebaseServices.auth);
+            } catch (error) {
+                console.error("Google Redirect Result Error:", error);
+            }
+
+            onAuthStateChanged(firebaseServices.auth, async (user) => {
+                if (user) {
+                    // User is signed in (either by token, redirect, or session)
+                    appState.userId = user.uid;
+                    console.log("Authenticated User UID:", appState.userId);
+                    initDataListeners();
+                    domElements.loadingScreen.style.display = 'none';
+                    domElements.mainApp.style.display = 'flex'; // 顯示 App
+                    domElements.loginView.style.display = 'none'; // 隱藏登入畫面
+                } else {
+                    // No user signed in
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        // Canvas 環境: 使用 token 登入
+                        try {
+                           await signInWithCustomToken(firebaseServices.auth, __initial_auth_token);
+                           // onAuthStateChanged will be called again with user
+                        } catch (error) {
+                            console.error("Custom token sign-in failed", error);
+                            // 令牌登入失敗，顯示登入按鈕作為備案
+                            domElements.loadingScreen.style.display = 'none';
+                            domElements.mainApp.style.display = 'none';
+                            domElements.loginView.style.display = 'flex';
+                        }
+                    } else {
+                        // GitHub/外部 環境: 顯示登入按鈕
+                        console.log("No user or token, showing login view.");
+                        domElements.loadingScreen.style.display = 'none';
+                        domElements.mainApp.style.display = 'none';
+                        domElements.loginView.style.display = 'flex';
+                    }
+                }
+            });
+        }
+
+        // --- Data Fetching & Real-time Listeners ---
+        function initDataListeners() {
+            if (!appState.userId) return;
+
+            const { db } = firebaseServices;
+            const basePath = `/artifacts/${appId}/users/${appState.userId}`;
+
+            // Listen for transactions
+            const transactionsQuery = query(collection(db, `${basePath}/transactions`), orderBy('date', 'desc'));
+            onSnapshot(transactionsQuery, snapshot => {
+                appState.transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                refreshUI();
+            });
+
+            // Listen for categories
+            const categoriesQuery = query(collection(db, `${basePath}/categories`), orderBy('name'));
+            onSnapshot(categoriesQuery, snapshot => {
+                appState.categories = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderCategoriesView();
+            });
+
+            // Listen for deposits
+            const depositsQuery = query(collection(db, `${basePath}/deposits`), orderBy('date', 'desc'));
+            onSnapshot(depositsQuery, snapshot => {
+                appState.deposits = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                refreshUI();
+            });
+            
+            // Listen for recurring items
+            const recurringQuery = query(collection(db, `${basePath}/recurring`), orderBy('day'));
+            onSnapshot(recurringQuery, snapshot => {
+                appState.recurringItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderRecurringView();
+            });
+
+            // Listen for budget
+            onSnapshot(doc(db, `${basePath}/budgets/main`), docSnap => {
+                appState.budget = docSnap.exists() ? docSnap.data() : { totalAmount: 0 };
+                renderBudgetView();
+            });
+
+            // Listen for goal
+            onSnapshot(doc(db, `${basePath}/goals/main`), docSnap => {
+                appState.goal = docSnap.exists() ? docSnap.data() : null;
+                renderGoalsView();
+            });
+
+            // Listen for metadata
+            onSnapshot(doc(db, `${basePath}/metadata/recurring`), docSnap => {
+                appState.metadata = docSnap.exists() ? docSnap.data() : { lastChecked: '' };
+                processRecurringTransactions();
+            });
+
+            // Listen for Initial Capital
+            onSnapshot(doc(db, `${basePath}/capital/main`), docSnap => {
+                appState.initialCapital = docSnap.exists() ? docSnap.data() : { amount: 0 };
+                refreshUI();
+            });
+        }
+        
+        // --- Central UI Refresh Function ---
+        function refreshUI() {
+            // Re-render components that depend on multiple data sources
+            renderTransactionsView();
+            renderOverviewView();
+            renderBudgetView();
+            renderGoalsView();
+        }
+
+        // --- Page Navigation Logic ---
+        function navigateTo(pageId) {
+            appState.activePage = pageId;
+            Object.values(domElements.pages).forEach(page => {
+                if(page) page.classList.add('hidden');
+            });
+            if(domElements.pages[pageId]) {
+                 domElements.pages[pageId].classList.remove('hidden');
+            }
+
+            domElements.navItems.forEach(item => {
+                const link = item.querySelector('a');
+                if (item.dataset.page === pageId) {
+                    link.classList.add('bg-gray-200', 'text-gray-900'); // GitHub style active
+                    link.classList.remove('text-slate-700', 'hover:bg-gray-200');
+                } else {
+                    link.classList.remove('bg-gray-200', 'text-gray-900');
+                    link.classList.add('text-slate-700', 'hover:bg-gray-200');
+                }
+            });
+
+            // Show/hide FAB
+            if (domElements.addTransactionFab) {
+                domElements.addTransactionFab.classList.toggle('hidden', pageId !== 'transactions');
+            }
+        }
+
+        // --- Render Functions for each component/page ---
+
+        // Render Transactions Page
+        function renderTransactionsView() {
+            if (!domElements.pages.transactions) return;
+            const { transactions, deposits, initialCapital } = appState;
+            const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + Number(t.amount), 0);
+            const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + Number(t.amount), 0);
+            const totalDeposits = deposits.reduce((sum, d) => sum + Number(d.amount), 0);
+            const capitalAmount = Number(initialCapital.amount) || 0;
+            const availableBalance = capitalAmount + totalIncome - totalExpense - totalDeposits;
+
+            document.getElementById('total-income').textContent = `$${totalIncome.toLocaleString()}`;
+            document.getElementById('total-expense').textContent = `$${totalExpense.toLocaleString()}`;
+            document.getElementById('available-balance').textContent = `$${availableBalance.toLocaleString()}`;
+            document.getElementById('capital-display-amount').textContent = `$${capitalAmount.toLocaleString()}`;
+            
+            // Render Deposits
+            const depositListEl = document.getElementById('deposit-list');
+            depositListEl.innerHTML = '';
+            if (deposits.length > 0) {
+                deposits.forEach(d => {
+                    const el = document.createElement('div');
+                    el.className = 'flex justify-between items-center p-2 bg-gray-50 rounded-lg border border-gray-200';
+                    el.innerHTML = `
+                        <div>
+                            <p class="font-semibold">$${Number(d.amount).toLocaleString()}</p>
+                            <p class="text-sm text-slate-500">${d.date}</p>
+                        </div>
+                        <button class="delete-deposit-btn text-red-400 hover:text-red-600" data-id="${d.id}"><i class="fas fa-times-circle"></i></button>
+                    `;
+                    depositListEl.appendChild(el);
+                });
+            } else {
+                depositListEl.innerHTML = `<p class="text-slate-400 text-center py-4">尚無存款紀錄</p>`;
+            }
+            
+            // Render All Transactions
+            const transactionsListEl = document.getElementById('recent-transactions-list');
+            transactionsListEl.innerHTML = '';
+            if (transactions.length > 0) {
+                transactions.forEach(t => {
+                    const el = document.createElement('div');
+                    const isExpense = t.type === 'expense';
+                    el.className = 'flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 border-b border-gray-100';
+                    el.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full flex items-center justify-center ${isExpense ? 'bg-red-100 text-red-500' : 'bg-green-100 text-green-500'}">
+                                <i class="fas ${isExpense ? 'fa-arrow-down' : 'fa-arrow-up'}"></i>
+                            </div>
+                            <div>
+                                <p class="font-semibold">${t.description || t.category}</p>
+                                <p class="text-sm text-slate-500">${t.date} - ${t.category}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <p class="font-bold text-lg ${isExpense ? 'text-red-500' : 'text-green-500'}">
+                                ${isExpense ? '-' : '+'}$${Number(t.amount).toLocaleString()}
+                            </p>
+                            <button class="edit-transaction-btn text-slate-400 hover:text-blue-600" data-id="${t.id}"><i class="fas fa-pen"></i></button>
+                            <button class="delete-transaction-btn text-slate-400 hover:text-red-600" data-id="${t.id}"><i class="fas fa-trash"></i></button>
+                        </div>
+                    `;
+                    transactionsListEl.appendChild(el);
+                });
+            } else {
+                 transactionsListEl.innerHTML = `<p class="text-slate-400 text-center py-4">尚無交易紀錄</p>`;
+            }
+        }
+        
+        // Render Category Dropdowns and Lists
+        function renderCategoriesView() {
+            const selectors = ['#transaction-category', '#recurring-category'];
+            selectors.forEach(selector => {
+                const select = document.querySelector(selector);
+                if (!select) return;
+                select.innerHTML = '';
+                 appState.categories.forEach(cat => {
+                    const option = document.createElement('option');
+                    option.value = cat.name;
+                    option.textContent = cat.name;
+                    select.appendChild(option);
+                });
+            });
+
+            const myListEl = document.getElementById('my-categories-list');
+            if (!myListEl) return;
+            myListEl.innerHTML = '';
+            if (appState.categories.length > 0) {
+                appState.categories.forEach(cat => {
+                    const el = document.createElement('div');
+                    el.className = 'bg-blue-100 text-blue-800 text-sm font-semibold px-3 py-1.5 rounded-full flex items-center gap-2';
+                    el.innerHTML = `
+                        <span>${cat.name}</span>
+                        <button class="delete-category-btn" data-id="${cat.id}"><i class="fas fa-times-circle"></i></button>
+                    `;
+                    myListEl.appendChild(el);
+                });
+            } else {
+                myListEl.innerHTML = `<p class="text-slate-400 w-full text-center py-4">尚無自訂類別</p>`;
+            }
+        }
+
+        // Render Overview Page
+        function renderOverviewView() {
+            if (appState.activePage !== 'overview' || !document.getElementById('overview-chart')) return;
+
+            const filter = document.getElementById('overview-filter').value;
+            const now = new Date();
+            const filteredTransactions = appState.transactions.filter(t => {
+                const tDate = new Date(t.date);
+                if (filter === 'month') {
+                    return tDate.getFullYear() === now.getFullYear() && tDate.getMonth() === now.getMonth();
+                }
+                if (filter === 'year') {
+                    return tDate.getFullYear() === now.getFullYear();
+                }
+                return true;
+            });
+            
+            const activeChartType = document.querySelector('#show-balance-chart-btn.bg-green-600') ? 'balance' : 'expense';
+            
+            if (charts.overview) {
+                charts.overview.destroy();
+            }
+
+            const ctx = document.getElementById('overview-chart').getContext('2d');
+
+            if (activeChartType === 'balance') {
+                 // Balance Line Chart - Each point is a transaction
+                const sorted = [...filteredTransactions].sort((a, b) => new Date(a.date) - new Date(b.date));
+                const chartLabels = []; // For x-axis display (dates)
+                const tooltipLabels = []; // For detailed tooltips
+                const dataPoints = [];
+                let currentBalance = 0;
+                
+                for (const t of sorted) {
+                    const change = t.type === 'income' ? Number(t.amount) : -Number(t.amount);
+                    currentBalance += change;
+                    chartLabels.push(t.date);
+                    tooltipLabels.push(`${t.date} - ${t.description || t.category}`);
+                    dataPoints.push(currentBalance);
+                }
+
+                charts.overview = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: chartLabels,
+                        datasets: [{
+                            label: '餘額變化',
+                            data: dataPoints,
+                            borderColor: '#22c55e', // GitHub green
+                            backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                            fill: true,
+                            tension: 0.1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    title: function(context) {
+                                        return tooltipLabels[context[0].dataIndex];
+                                    },
+                                    label: function(context) {
+                                        return `餘額: $${context.parsed.y.toLocaleString()}`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                ticks: {
+                                    autoSkip: true,
+                                    maxTicksLimit: 10
+                                }
+                            }
+                        }
+                    }
+                });
+            } else {
+                // Expense Pie Chart
+                const expenseByCategory = filteredTransactions
+                    .filter(t => t.type === 'expense')
+                    .reduce((acc, t) => {
+                        acc[t.category] = (acc[t.category] || 0) + Number(t.amount);
+                        return acc;
+                    }, {});
+                
+                const labels = Object.keys(expenseByCategory);
+                const data = Object.values(expenseByCategory);
+                
+                charts.overview = new Chart(ctx, {
+                    type: 'pie',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: '支出分類',
+                            data: data,
+                            backgroundColor: [
+                                '#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e',
+                                '#14b8a6', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef'
+                            ]
+                        }]
+                    },
+                     options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                    }
+                });
+            }
+        }
+        
+        // Render Budget Page
+        function renderBudgetView() {
+            if (!document.getElementById('budget-chart')) return;
+            if (charts.budget) {
+                charts.budget.destroy();
+            }
+            const now = new Date();
+            const monthExpenses = appState.transactions
+                .filter(t => t.type === 'expense' && new Date(t.date).getFullYear() === now.getFullYear() && new Date(t.date).getMonth() === now.getMonth())
+                .reduce((sum, t) => sum + Number(t.amount), 0);
+            
+            const total = Number(appState.budget.totalAmount) || 0;
+            const isOverBudget = monthExpenses > total && total > 0;
+            const remaining = total - monthExpenses;
+            const percentage = total > 0 ? Math.round((monthExpenses / total) * 100) : 0;
+            
+            document.getElementById('budget-spent-amount').textContent = `$${monthExpenses.toLocaleString()}`;
+            document.getElementById('budget-total-amount').textContent = `$${total.toLocaleString()}`;
+            const percentageEl = document.getElementById('budget-spent-percentage');
+            percentageEl.textContent = `${percentage}%`;
+            percentageEl.classList.toggle('text-red-500', isOverBudget);
+            document.getElementById('budget-input').value = total > 0 ? total : '';
+
+            document.getElementById('nav-budget-link').classList.toggle('text-red-500', isOverBudget);
+
+            const chartData = isOverBudget ? [monthExpenses] : [monthExpenses, Math.max(0, remaining)];
+            const chartLabels = isOverBudget ? ['已超支'] : ['已支出', '剩餘'];
+            const chartColors = isOverBudget ? ['#ef4444'] : ['#22c55e', '#e5e7eb']; // GitHub green
+
+            const ctx = document.getElementById('budget-chart').getContext('2d');
+            charts.budget = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: chartLabels,
+                    datasets: [{
+                        data: chartData,
+                        backgroundColor: chartColors,
+                        borderColor: '#ffffff',
+                        borderWidth: 4,
+                        cutout: '80%'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { enabled: true }
+                    }
+                }
+            });
+        }
+
+        // Render Recurring Page
+        function renderRecurringView() {
+            const listEl = document.getElementById('recurring-list');
+            if (!listEl) return;
+            listEl.innerHTML = '';
+            if (appState.recurringItems.length > 0) {
+                appState.recurringItems.forEach(item => {
+                    const el = document.createElement('div');
+                    el.className = 'flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-200';
+                    const isExpense = item.type === 'expense';
+                    el.innerHTML = `
+                         <div class="flex items-center gap-3">
+                            <i class="fas ${isExpense ? 'fa-arrow-down text-red-500' : 'fa-arrow-up text-green-500'}"></i>
+                            <div>
+                                <p class="font-semibold">${item.description} ($${Number(item.amount).toLocaleString()})</p>
+                                <p class="text-sm text-slate-500">每月 ${item.day} 日 - ${item.category}</p>
+                            </div>
+                        </div>
+                        <button class="delete-recurring-btn text-slate-400 hover:text-red-600" data-id="${item.id}"><i class="fas fa-trash-alt"></i></button>
+                    `;
+                    listEl.appendChild(el);
+                });
+            } else {
+                listEl.innerHTML = `<p class="text-slate-400 text-center py-4">尚無定期項目</p>`;
+            }
+        }
+        
+        // Render Goals Page
+        function renderGoalsView() {
+            if (!document.getElementById('goal-chart')) return;
+            if (charts.goal) {
+                charts.goal.destroy();
+            }
+            const setupView = document.getElementById('setup-goal-view');
+            const dashboard = document.getElementById('goal-dashboard');
+            
+            if (!setupView || !dashboard) return;
+            
+            const { goal, deposits } = appState;
+
+            if (goal && goal.target > 0) {
+                setupView.classList.add('hidden');
+                dashboard.classList.remove('hidden');
+
+                const totalDeposits = deposits.reduce((sum, d) => sum + Number(d.amount), 0);
+                const targetAmount = Number(goal.target);
+                const remaining = Math.max(0, targetAmount - totalDeposits);
+                const percentage = targetAmount > 0 ? Math.min(100, Math.round((totalDeposits / targetAmount) * 100)) : 0;
+
+                document.getElementById('goal-name-display').textContent = goal.name;
+                document.getElementById('goal-current-amount').textContent = `$${totalDeposits.toLocaleString()}`;
+                document.getElementById('goal-target-amount').textContent = `$${targetAmount.toLocaleString()}`;
+                document.getElementById('goal-progress-percentage').textContent = `${percentage}%`;
+                
+                const ctx = document.getElementById('goal-chart').getContext('2d');
+                charts.goal = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['已存金額', '尚需金額'],
+                        datasets: [{
+                            data: [totalDeposits, remaining],
+                            backgroundColor: ['#22c55e', '#e5e7eb'],
+                            borderColor: '#ffffff',
+                            borderWidth: 4,
+                            cutout: '80%'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { enabled: true }
+                        }
+                    }
+                });
+            } else {
+                setupView.classList.remove('hidden');
+                dashboard.classList.add('hidden');
+            }
+        }
+
+        // --- Logic Functions ---
+
+        // Reset Data Logic
+        function confirmResetDataStep1() {
+            showModal(
+                '警告：確認重置資料',
+                '您確定要刪除所有資料嗎？此操作將會清除所有交易、存款、預算和目標，且無法復原。',
+                [
+                    { text: '取消', class: 'bg-gray-200', action: hideModal },
+                    { text: '確定重置', class: 'bg-red-600 text-white', action: confirmResetDataStep2 }
+                ]
+            );
+        }
+
+        function confirmResetDataStep2() {
+            showModal(
+                '最後確認！',
+                '這是您的最後一次機會。點擊下方按鈕將永久刪除所有資料。您真的確定要繼續嗎？',
+                [
+                    { text: '取消', class: 'bg-gray-200', action: hideModal },
+                    { text: '是的，全部刪除', class: 'bg-red-800 text-white', action: async () => {
+                        hideModal(); // Hide modal before starting deletion
+                        await deleteAllUserData();
+                    }}
+                ]
+            );
+        }
+
+        async function deleteAllUserData() {
+            domElements.loadingScreen.style.display = 'flex'; // Show loading screen
+            const { db } = firebaseServices;
+            const { userId } = appState;
+            try {
+                const basePath = `/artifacts/${appId}/users/${userId}`;
+                const collectionsToDelete = ['transactions', 'categories', 'deposits', 'recurring'];
+                
+                // Delete all documents in collections
+                for (const coll of collectionsToDelete) {
+                    const snapshot = await getDocs(collection(db, `${basePath}/${coll}`));
+                    for (const docSnap of snapshot.docs) {
+                        await deleteDoc(doc(db, `${basePath}/${coll}/${docSnap.id}`));
+                    }
+                }
+
+                // Delete single documents
+                await deleteDoc(doc(db, `${basePath}/budgets/main`));
+                await deleteDoc(doc(db, `${basePath}/goals/main`));
+                await deleteDoc(doc(db, `${basePath}/capital/main`));
+                await deleteDoc(doc(db, `${basePath}/metadata/recurring`));
+                
+                // The onSnapshot listeners will automatically update the UI to an empty state.
+                 showModal('完成', '您的所有資料已被成功重置。', [{ text: '好的', class: 'bg-green-600 text-white', action: hideModal }]);
+
+            } catch (error) {
+                console.error("Error resetting data:", error);
+                showModal('錯誤', '資料重置失敗，請稍後再試。', [{ text: '關閉', class: 'bg-gray-200', action: hideModal }]);
+            } finally {
+                domElements.loadingScreen.style.display = 'none'; // Hide loading screen
+            }
+        }
+
+        // Check and prompt for recurring transactions
+        function processRecurringTransactions() {
+            const { metadata, recurringItems, userId } = appState;
+            const { db } = firebaseServices;
+            const now = new Date();
+            const currentMonthYear = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            const today = now.getDate();
+
+            if (metadata.lastChecked === currentMonthYear || recurringItems.length === 0) {
+                return;
+            }
+
+            const dueItems = recurringItems.filter(item => item.day <= today);
+            const metadataDocRef = doc(db, `/artifacts/${appId}/users/${userId}/metadata/recurring`);
+
+            if (dueItems.length === 0) {
+                // If no items are due yet, still update the check so we don't ask again this month
+                setDoc(metadataDocRef, { lastChecked: currentMonthYear });
+                return;
+            }
+
+            const itemsList = dueItems.map(item => `<li>${item.description} - $${item.amount}</li>`).join('');
+            showModal(
+                '定期記帳提醒',
+                `<p class="mb-2">偵測到以下本月尚未記錄的定期項目，是否要立即補登？</p><ul class="text-left list-disc list-inside">${itemsList}</ul>`,
+                [
+                    { text: '稍後再說', class: 'bg-gray-200', action: hideModal },
+                    { text: '全部補登', class: 'bg-green-600 text-white', action: () => {
+                        const collectionRef = collection(db, `/artifacts/${appId}/users/${userId}/transactions`);
+                        dueItems.forEach(item => {
+                            addDoc(collectionRef, {
+                                ...item,
+                                date: `${currentMonthYear}-${String(item.day).padStart(2, '0')}`,
+                            });
+                        });
+                        setDoc(metadataDocRef, { lastChecked: currentMonthYear });
+                        hideModal();
+                    }}
+                ]
+            );
+        }
+
+        // AI Category Generation
+        async function fetchAiCategories() {
+            const promptInput = document.getElementById('ai-prompt-input');
+            if (!promptInput || !promptInput.value.trim()) {
+                showModal('提示', '請輸入您的身分或需求。', [{ text: '好的', class: 'bg-green-600 text-white', action: hideModal }]);
+                return;
+            }
+
+            const btn = document.getElementById('ai-generate-btn');
+            const originalIcon = btn.innerHTML;
+            btn.innerHTML = `<i class="fas fa-spinner animate-spin"></i>`;
+            btn.disabled = true;
+            
+            const apiKey = ""; // The environment will handle the API key automatically
+
+            const systemPrompt = "You are a helpful assistant for a personal finance app. Based on the user's description, suggest 5 to 10 relevant expense categories. Provide the response as a simple comma-separated list, in Traditional Chinese. For example: 伙食費,交通費,娛樂費,治裝費,學習費";
+            const userQuery = `我是一個 ${promptInput.value}`;
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent`;
+
+             const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+            };
+            
+            try {
+                const response = await fetch(`${apiUrl}?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API call failed with status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                 if (!responseText) {
+                    throw new Error("Invalid response from AI.");
+                }
+                
+                const suggestions = responseText.split(',').map(s => s.trim()).filter(s => s);
+                renderAiCategorySuggestions(suggestions);
+
+            } catch (error) {
+                console.error("AI generation failed:", error);
+                showModal('錯誤', 'AI 推薦失敗，請稍後再試。', [{ text: '關閉', class: 'bg-gray-200', action: hideModal }]);
+            } finally {
+                btn.innerHTML = originalIcon;
+                btn.disabled = false;
+            }
+        }
+        
+        function renderAiCategorySuggestions(suggestions) {
+            const container = document.getElementById('ai-suggestions-container');
+            if (!container) return;
+            container.innerHTML = '';
+            if(suggestions.length === 0) {
+                container.innerHTML = `<p class="text-slate-400 w-full text-center py-4">AI 未能提供建議，請換個提示詞試試。</p>`;
+                return;
+            }
+            suggestions.forEach(suggestion => {
+                const el = document.createElement('button');
+                el.className = 'bg-purple-100 text-purple-800 text-sm font-semibold px-3 py-1.5 rounded-full hover:bg-purple-200';
+                el.textContent = suggestion;
+                el.onclick = () => {
+                    addDoc(collection(firebaseServices.db, `/artifacts/${appId}/users/${appState.userId}/categories`), { name: suggestion });
+                    el.classList.add('bg-green-200', 'text-green-800');
+                    el.disabled = true;
+                };
+                container.appendChild(el);
+            });
+        }
+
+        function showEditTransactionModal(id) {
+            const transaction = appState.transactions.find(t => t.id === id);
+            if (!transaction) return;
+
+            appState.editingTransactionId = id;
+
+            // Populate form
+            document.getElementById('transaction-type').value = transaction.type;
+            document.getElementById('transaction-date').value = transaction.date;
+            document.getElementById('transaction-category').value = transaction.category;
+            document.getElementById('transaction-amount').value = transaction.amount;
+            document.getElementById('transaction-description').value = transaction.description;
+
+            // Update type buttons UI
+            const typeExpenseBtn = document.getElementById('type-expense-btn');
+            const typeIncomeBtn = document.getElementById('type-income-btn');
+            if (transaction.type === 'income') {
+                typeIncomeBtn.classList.add('bg-green-500', 'text-white');
+                typeIncomeBtn.classList.remove('bg-gray-200', 'text-slate-800');
+                typeExpenseBtn.classList.remove('bg-red-500', 'text-white');
+                typeExpenseBtn.classList.add('bg-gray-200', 'text-slate-800');
+            } else {
+                typeExpenseBtn.classList.add('bg-red-500', 'text-white');
+                typeExpenseBtn.classList.remove('bg-gray-200', 'text-slate-800');
+                typeIncomeBtn.classList.remove('bg-green-500', 'text-white');
+                typeIncomeBtn.classList.add('bg-gray-200', 'text-slate-800');
+            }
+            
+            // Update modal title and button
+            document.getElementById('transaction-modal-title').textContent = '編輯紀錄';
+            document.getElementById('transaction-submit-btn').textContent = '儲存變更';
+            document.getElementById('transaction-submit-btn').className = "w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition-colors"; // GitHub style save
+
+            // Show modal
+            const addTransactionModal = document.getElementById('add-transaction-modal');
+            addTransactionModal.classList.remove('hidden');
+            addTransactionModal.classList.add('flex');
+        }
+
+        function resetTransactionModal() {
+            appState.editingTransactionId = null;
+            document.getElementById('transaction-form').reset();
+            document.getElementById('transaction-modal-title').textContent = '新增紀錄';
+            document.getElementById('transaction-submit-btn').textContent = '新增';
+            document.getElementById('transaction-submit-btn').className = "w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition-colors"; // GitHub style save
+            
+            const typeExpenseBtn = document.getElementById('type-expense-btn');
+            const typeIncomeBtn = document.getElementById('type-income-btn');
+            typeExpenseBtn.classList.add('bg-red-500', 'text-white');
+            typeExpenseBtn.classList.remove('bg-gray-200', 'text-slate-800');
+            typeIncomeBtn.classList.remove('bg-green-500', 'text-white');
+            typeIncomeBtn.classList.add('bg-gray-200', 'text-slate-800');
+        }
+
+
+        // --- Event Handlers ---
+        
+        function handleGoogleLogin() {
+            const provider = new GoogleAuthProvider();
+            signInWithRedirect(firebaseServices.auth, provider);
+        }
+
+        async function handleTransactionFormSubmit(e) {
+            e.preventDefault();
+            const { db } = firebaseServices;
+            const { userId, editingTransactionId } = appState;
+
+            const transactionData = {
+                type: document.getElementById('transaction-type').value,
+                date: document.getElementById('transaction-date').value,
+                category: document.getElementById('transaction-category').value,
+                amount: parseFloat(document.getElementById('transaction-amount').value),
+                description: document.getElementById('transaction-description').value,
+            };
+            try {
+                if (editingTransactionId) {
+                    const docRef = doc(db, `/artifacts/${appId}/users/${userId}/transactions/${editingTransactionId}`);
+                    await setDoc(docRef, transactionData);
+                } else {
+                    await addDoc(collection(db, `/artifacts/${appId}/users/${userId}/transactions`), transactionData);
+                }
+                const modal = document.getElementById('add-transaction-modal');
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                resetTransactionModal();
+            } catch (error) {
+                console.error("Error saving transaction: ", error);
+                showModal('錯誤', '儲存失敗，請稍後再試。', [{ text: '關閉', class: 'bg-gray-200', action: hideModal }]);
+            }
+        }
+
+        function handleDeleteDeposit(e) {
+            const btn = e.target.closest('.delete-deposit-btn');
+            if (btn) {
+                const id = btn.dataset.id;
+                showModal(
+                    '確認刪除存款',
+                    '您確定要刪除這筆存款嗎？此動作無法復原。',
+                    [
+                        { text: '取消', class: 'bg-gray-200', action: hideModal },
+                        { text: '確定刪除', class: 'bg-red-500 text-white', action: async () => {
+                            await deleteDoc(doc(firebaseServices.db, `/artifacts/${appId}/users/${appState.userId}/deposits/${id}`));
+                            hideModal();
+                        }}
+                    ]
+                );
+            }
+        }
+
+        async function handleAddDeposit() {
+            const amountInput = document.getElementById('deposit-amount');
+            const amount = parseFloat(amountInput.value);
+            if (amount > 0) {
+                try {
+                    await addDoc(collection(firebaseServices.db, `/artifacts/${appId}/users/${appState.userId}/deposits`), {
+                        amount: amount,
+                        date: new Date().toISOString().split('T')[0]
+                    });
+                    amountInput.value = '';
+                } catch(error) {
+                    console.error("Error adding deposit:", error);
+                    showModal('錯誤', '新增存款失敗。', [{ text: '關閉', class: 'bg-gray-200', action: hideModal }]);
+                }
+            }
+        }
+
+        function handleTransactionListClick(e) {
+            const deleteBtn = e.target.closest('.delete-transaction-btn');
+            if (deleteBtn) {
+                const id = deleteBtn.dataset.id;
+                 showModal(
+                    '確認刪除交易',
+                    '您確定要刪除這筆交易紀錄嗎？',
+                    [
+                        { text: '取消', class: 'bg-gray-200', action: hideModal },
+                        { text: '確定刪除', class: 'bg-red-500 text-white', action: async () => {
+                            await deleteDoc(doc(firebaseServices.db, `/artifacts/${appId}/users/${appState.userId}/transactions/${id}`));
+                            hideModal();
+                        }}
+                    ]
+                );
+            }
+
+            const editBtn = e.target.closest('.edit-transaction-btn');
+            if(editBtn) {
+                showEditTransactionModal(editBtn.dataset.id);
+            }
+        }
+        
+        async function handleGoalFormSubmit(e) {
+            e.preventDefault();
+            const newGoal = {
+                name: document.getElementById('goal-name-input').value,
+                target: parseFloat(document.getElementById('goal-target-input').value),
+            };
+            await setDoc(doc(firebaseServices.db, `/artifacts/${appId}/users/${appState.userId}/goals/main`), newGoal);
+            const modal = document.getElementById('goal-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        async function handleAddCategory() {
+            const nameInput = document.getElementById('category-name-input');
+            const name = nameInput.value.trim();
+            if (name) {
+                await addDoc(collection(firebaseServices.db, `/artifacts/${appId}/users/${appState.userId}/categories`), { name });
+                nameInput.value = '';
+            }
+        }
+
+        function handleDeleteCategory(e) {
+            const btn = e.target.closest('.delete-category-btn');
+            if (btn) {
+                const id = btn.dataset.id;
+                showModal(
+                    '確認刪除',
+                    '您確定要刪除此類別嗎？',
+                    [
+                        { text: '取消', class: 'bg-gray-200', action: hideModal },
+                        { text: '確定刪除', class: 'bg-red-500 text-white', action: async () => {
+                            await deleteDoc(doc(firebaseServices.db, `/artifacts/${appId}/users/${appState.userId}/categories/${id}`));
+                            hideModal();
+                        }}
+                    ]
+                );
+            }
+        }
+        
+        // --- Event Binders ---
+        
+        function bindPageEventListeners() {
+            // Google Login Button
+            domElements.loginBtn.addEventListener('click', handleGoogleLogin);
+
+            // Sidebar navigation
+            domElements.navItems.forEach(item => {
+                item.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    navigateTo(item.dataset.page);
+                    // On mobile, close sidebar after navigation
+                    if (window.innerWidth < 768) {
+                        document.getElementById('sidebar').classList.add('-translate-x-full');
+                    }
+                });
+            });
+            
+            // Transaction Modal
+            const addTransactionModal = document.getElementById('add-transaction-modal');
+            document.getElementById('add-transaction-fab').addEventListener('click', () => {
+                resetTransactionModal();
+                document.getElementById('transaction-date').valueAsDate = new Date();
+                addTransactionModal.classList.remove('hidden');
+                addTransactionModal.classList.add('flex');
+            });
+
+            document.getElementById('close-modal-btn').addEventListener('click', () => {
+                 addTransactionModal.classList.add('hidden');
+                 addTransactionModal.classList.remove('flex');
+                 resetTransactionModal();
+            });
+
+            document.getElementById('transaction-form').addEventListener('submit', handleTransactionFormSubmit);
+
+            document.getElementById('type-expense-btn').addEventListener('click', () => {
+                document.getElementById('transaction-type').value = 'expense';
+                document.getElementById('type-expense-btn').classList.add('bg-red-500', 'text-white');
+                document.getElementById('type-expense-btn').classList.remove('bg-gray-200', 'text-slate-800');
+                document.getElementById('type-income-btn').classList.remove('bg-green-500', 'text-white');
+                document.getElementById('type-income-btn').classList.add('bg-gray-200', 'text-slate-800');
+            });
+            document.getElementById('type-income-btn').addEventListener('click', () => {
+                document.getElementById('transaction-type').value = 'income';
+                document.getElementById('type-income-btn').classList.add('bg-green-500', 'text-white');
+                document.getElementById('type-income-btn').classList.remove('bg-gray-200', 'text-slate-800');
+                document.getElementById('type-expense-btn').classList.remove('bg-red-500', 'text-white');
+                document.getElementById('type-expense-btn').classList.add('bg-gray-200', 'text-slate-800');
+            });
+
+            // Capital Handlers
+            const capitalDisplayView = document.getElementById('capital-display-view');
+            const capitalEditView = document.getElementById('capital-edit-view');
+            document.getElementById('edit-capital-btn').addEventListener('click', () => {
+                document.getElementById('capital-input').value = appState.initialCapital.amount > 0 ? appState.initialCapital.amount : '';
+                capitalDisplayView.classList.add('hidden');
+                capitalEditView.classList.remove('hidden');
+            });
+            document.getElementById('cancel-capital-edit-btn').addEventListener('click', () => {
+                capitalDisplayView.classList.remove('hidden');
+                capitalEditView.classList.add('hidden');
+            });
+            document.getElementById('save-capital-btn').addEventListener('click', async () => {
+                const amount = parseFloat(document.getElementById('capital-input').value) || 0;
+                await setDoc(doc(firebaseServices.db, `/artifacts/${appId}/users/${appState.userId}/capital/main`), { amount: amount });
+                capitalDisplayView.classList.remove('hidden');
+                capitalEditView.classList.add('hidden');
+            });
+
+            // Deposit handlers
+            document.getElementById('deposit-list').addEventListener('click', handleDeleteDeposit);
+            document.getElementById('add-deposit-btn').addEventListener('click', handleAddDeposit);
+            
+            // Transaction List Click Handler
+            document.getElementById('recent-transactions-list').addEventListener('click', handleTransactionListClick);
+
+            // Overview Page Handlers
+            document.getElementById('overview-filter')?.addEventListener('change', renderOverviewView);
+            document.getElementById('show-balance-chart-btn')?.addEventListener('click', (e) => {
+                e.currentTarget.classList.add('bg-green-600', 'text-white');
+                document.getElementById('show-expense-chart-btn').classList.remove('bg-green-600', 'text-white');
+                renderOverviewView();
+            });
+            document.getElementById('show-expense-chart-btn')?.addEventListener('click', (e) => {
+                e.currentTarget.classList.add('bg-green-600', 'text-white');
+                document.getElementById('show-balance-chart-btn').classList.remove('bg-green-600', 'text-white');
+                renderOverviewView();
+            });
+            
+            // Budget Page Handlers
+            document.getElementById('save-budget-btn')?.addEventListener('click', async () => {
+                const amount = parseFloat(document.getElementById('budget-input').value);
+                if (amount >= 0) {
+                     await setDoc(doc(firebaseServices.db, `/artifacts/${appId}/users/${appState.userId}/budgets/main`), { totalAmount: amount });
+                }
+            });
+            
+            // Recurring Page Handlers
+            document.getElementById('add-recurring-form')?.addEventListener('submit', async e => {
+                e.preventDefault();
+                const newItem = {
+                    type: document.getElementById('recurring-type').value,
+                    day: parseInt(document.getElementById('recurring-day').value),
+                    category: document.getElementById('recurring-category').value,
+                    amount: parseFloat(document.getElementById('recurring-amount').value),
+                    description: document.getElementById('recurring-description').value,
+                };
+                await addDoc(collection(firebaseServices.db, `/artifacts/${appId}/users/${appState.userId}/recurring`), newItem);
+                e.target.reset();
+            });
+            document.getElementById('recurring-list')?.addEventListener('click', e => {
+                const btn = e.target.closest('.delete-recurring-btn');
+                if (btn) {
+                    const id = btn.dataset.id;
+                    showModal(
+                        '確認刪除',
+                        '您確定要刪除此定期項目嗎？',
+                        [
+                            { text: '取消', class: 'bg-gray-200', action: hideModal },
+                            { text: '確定刪除', class: 'bg-red-500 text-white', action: async () => {
+                                await deleteDoc(doc(firebaseServices.db, `/artifacts/${appId}/users/${appState.userId}/recurring/${id}`));
+                                hideModal();
+                            }}
+                        ]
+                    );
+                }
+            });
+            
+            // Goal Page Handlers
+            const goalModal = document.getElementById('goal-modal');
+            document.getElementById('setup-goal-btn')?.addEventListener('click', () => {
+                document.getElementById('goal-form').reset();
+                document.getElementById('goal-modal-title').textContent = '設定目標';
+                goalModal.classList.add('flex');
+                goalModal.classList.remove('hidden');
+            });
+            document.getElementById('edit-goal-btn')?.addEventListener('click', () => {
+                document.getElementById('goal-name-input').value = appState.goal.name;
+                document.getElementById('goal-target-input').value = appState.goal.target;
+                document.getElementById('goal-modal-title').textContent = '編輯目標';
+                goalModal.classList.add('flex');
+                goalModal.classList.remove('hidden');
+            });
+            document.getElementById('close-goal-modal-btn').addEventListener('click', () => {
+                 goalModal.classList.remove('flex');
+                 goalModal.classList.add('hidden');
+            });
+            document.getElementById('goal-form').addEventListener('submit', handleGoalFormSubmit);
+            
+            // Category Page Handlers
+            document.getElementById('add-category-btn')?.addEventListener('click', handleAddCategory);
+            document.getElementById('my-categories-list')?.addEventListener('click', handleDeleteCategory);
+            document.getElementById('ai-generate-btn')?.addEventListener('click', fetchAiCategories);
+        }
+
+        // --- DATA MANAGEMENT PAGE INITIALIZER ---
+        function bindDataManagementListeners() {
+            const page = document.getElementById('page-data-management');
+            if (!page) return; // Guard clause
+
+            const fileInput = document.getElementById('standard-import-input');
+            const fileNameDisplay = document.getElementById('standard-import-filename');
+            const importBtn = document.getElementById('standard-import-btn');
+            const exportBtn = document.getElementById('export-excel-btn');
+            const resetBtn = document.getElementById('reset-data-btn');
+            
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    fileNameDisplay.textContent = file.name;
+                    importBtn.disabled = false;
+                } else {
+                    fileNameDisplay.textContent = '尚未選擇檔案';
+                    importBtn.disabled = true;
+                }
+            });
+
+            importBtn.addEventListener('click', async () => {
+                const file = fileInput.files[0];
+                if (!file) return;
+
+                const originalBtnContent = importBtn.innerHTML;
+                importBtn.innerHTML = `<i class="fas fa-spinner animate-spin"></i> 正在處理...`;
+                importBtn.disabled = true;
+
+                try {
+                    const data = await file.arrayBuffer();
+                    const workbook = XLSX.read(data);
+                    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const transactionsToImport = XLSX.utils.sheet_to_json(worksheet);
+
+                    if (transactionsToImport.length === 0) {
+                        throw new Error("檔案中沒有資料或格式不符。");
+                    }
+
+                    const requiredHeaders = ['date', 'type', 'category', 'amount'];
+                    const headers = Object.keys(transactionsToImport[0]);
+                    const hasAllHeaders = requiredHeaders.every(h => headers.includes(h));
+                    if (!hasAllHeaders) {
+                        throw new Error(`檔案欄位不符，必要欄位為: ${requiredHeaders.join(', ')}`);
+                    }
+                    
+                    const newCategories = new Set();
+                    const existingCategories = new Set(appState.categories.map(c => c.name));
+                    
+                    const validatedTransactions = transactionsToImport.map(row => {
+                        const type = String(row.type).toLowerCase();
+                        if (type !== 'income' && type !== 'expense') return null;
+                        if (!row.date || !row.category || isNaN(parseFloat(row.amount))) return null;
+                        
+                        if (!existingCategories.has(row.category)) {
+                            newCategories.add(row.category);
+                        }
+                        
+                        // Handle Excel date serial number
+                        let date = row.date;
+                        if(typeof date === 'number') {
+                            const utc_days  = Math.floor(date - 25569);
+                            const utc_value = utc_days * 86400;
+                            const date_info = new Date(utc_value * 1000);
+                            date = new Date(date_info.getFullYear(), date_info.getMonth(), date_info.getDate()).toISOString().split('T')[0];
+                        }
+
+                        return {
+                            date: date,
+                            type: type,
+                            category: String(row.category),
+                            amount: parseFloat(row.amount),
+                            description: row.description ? String(row.description) : '',
+                        };
+                    }).filter(Boolean); // Remove null entries
+
+                    for (const catName of newCategories) {
+                        await addDoc(collection(firebaseServices.db, `/artifacts/${appId}/users/${appState.userId}/categories`), { name: catName });
+                    }
+
+                    for (const t of validatedTransactions) {
+                        await addDoc(collection(firebaseServices.db, `/artifacts/${appId}/users/${appState.userId}/transactions`), t);
+                    }
+
+                    showModal('成功', `成功匯入 ${validatedTransactions.length} 筆紀錄，並新增了 ${newCategories.size} 個新類別。`, [{ text: '完成', class: 'bg-green-600 text-white', action: hideModal }]);
+
+                } catch (error) {
+                    console.error("File import error:", error);
+                    showModal('匯入失敗', `處理檔案時發生錯誤：${error.message}`, [{ text: '關閉', class: 'bg-gray-200', action: hideModal }]);
+                } finally {
+                    importBtn.innerHTML = originalBtnContent;
+                    fileInput.value = ''; // Reset file input
+                    fileNameDisplay.textContent = '尚未選擇檔案';
+                }
+            });
+
+            exportBtn.addEventListener('click', () => {
+                const dataToExport = appState.transactions.map(t => ({
+                    'date': t.date,
+                    'type': t.type,
+                    'category': t.category,
+                    'amount': t.amount,
+                    'description': t.description
+                }));
+                const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, "交易紀錄");
+                XLSX.writeFile(workbook, "雲端記帳本_交易紀錄.xlsx");
+            });
+
+            resetBtn.addEventListener('click', confirmResetDataStep1);
+        }
+
+        // --- UI Interaction Logic (Sidebar, etc.) ---
+        function bindSidebarListeners() {
+            const sidebar = document.getElementById('sidebar');
+            const collapseBtn = document.getElementById('collapse-sidebar-btn');
+            const collapseIcon = document.getElementById('collapse-icon');
+            const sidebarTitle = document.getElementById('sidebar-title');
+            const sidebarTexts = document.querySelectorAll('.sidebar-item-text');
+
+            collapseBtn.addEventListener('click', () => {
+                sidebar.classList.toggle('w-64');
+                sidebar.classList.toggle('w-20');
+                sidebarTitle.classList.toggle('hidden');
+                collapseIcon.classList.toggle('fa-chevron-left');
+                collapseIcon.classList.toggle('fa-chevron-right');
+                sidebarTexts.forEach(text => text.classList.toggle('hidden'));
+            });
+
+            document.getElementById('mobile-menu-btn').addEventListener('click', () => {
+                sidebar.classList.remove('-translate-x-full');
+            });
+            document.getElementById('toggle-sidebar-btn').addEventListener('click', () => {
+                sidebar.classList.add('-translate-x-full');
+            });
+        }
+
+
+        // Alert Modal helpers
+        const alertModal = document.getElementById('alert-modal');
+        function showModal(title, body, buttons) {
+            document.getElementById('alert-modal-title').textContent = title;
+            document.getElementById('alert-modal-body').innerHTML = body;
+            const buttonsContainer = document.getElementById('alert-modal-buttons');
+            buttonsContainer.innerHTML = '';
+            buttons.forEach(btnInfo => {
+                const button = document.createElement('button');
+                button.textContent = btnInfo.text;
+                button.className = `px-4 py-2 rounded-lg font-semibold ${btnInfo.class}`;
+                button.addEventListener('click', btnInfo.action);
+                buttonsContainer.appendChild(button);
+            });
+            alertModal.classList.remove('hidden');
+            alertModal.classList.add('flex');
+        }
+
+        function hideModal() {
+            alertModal.classList.add('hidden');
+            alertModal.classList.remove('flex');
+        }
+
+        // --- App Entry Point ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize UI Elements object NOW that DOM is ready
+            domElements = {
+                loadingScreen: document.getElementById('app-loading'),
+                loginView: document.getElementById('login-view'),
+                mainApp: document.getElementById('main-app'),
+                loginBtn: document.getElementById('login-btn'),
+                pages: {
+                    transactions: document.getElementById('page-transactions'),
+                    overview: document.getElementById('page-overview'),
+                    budget: document.getElementById('page-budget'),
+                    recurring: document.getElementById('page-recurring'),
+                    goals: document.getElementById('page-goals'),
+                    categories: document.getElementById('page-categories'),
+                    'data-management': document.getElementById('page-data-management'),
+                },
+                navItems: document.querySelectorAll('.nav-item'),
+                addTransactionFab: document.getElementById('add-transaction-fab'),
+            };
+
+            initFirebase();
+            navigateTo('transactions'); // Set initial page
+            bindPageEventListeners(); // Initialize all general event listeners
+            bindDataManagementListeners(); // Initialize data management specific listeners
+            bindSidebarListeners(); // Initialize sidebar and modal interactions
+        });
+    </script>
+</body>
+</html>
+
